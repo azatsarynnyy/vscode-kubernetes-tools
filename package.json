@@ -231,6 +231,14 @@
                         "resource-commands-on-files": {
                             "type": "boolean",
                             "description": "If true, show Kubernetes resource commands on file context menu for all YAML files"
+                        },
+                        "imageBuildTool": {
+                            "type": "string",
+                            "enum": [
+                                "docker",
+                                "buildah"
+                            ],
+                            "description": "Container image build tool. Docker, by default."
                         }
                     },
                     "default": {
@@ -247,7 +255,8 @@
                         "vs-kubernetes.nodejs-autodetect-remote-root": true,
                         "vs-kubernetes.nodejs-remote-root": "",
                         "vs-kubernetes.nodejs-debug-port": 9229,
-                        "checkForMinikubeUpgrade": true
+                        "checkForMinikubeUpgrade": true,
+                        "imageBuildTool": "docker"
                     }
                 },
                 "vsdocker.imageUser": {

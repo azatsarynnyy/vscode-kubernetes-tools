@@ -192,3 +192,16 @@ export function getNodejsRemoteRoot(): string {
 export function getNodejsDebugPort(): number | undefined {
     return vscode.workspace.getConfiguration(EXTENSION_CONFIG_KEY)['vs-kubernetes.nodejs-debug-port'];
 }
+
+// container image build tool
+
+const IMAGE_BUILD_TOOL_KEY = "imageBuildTool";
+
+export function getImageBuildTool(): string {
+    // can't return undefined since the configuration has a default value
+    return vscode.workspace.getConfiguration(EXTENSION_CONFIG_KEY)[IMAGE_BUILD_TOOL_KEY];
+}
+
+export async function setImageBuildTool(tool: string): Promise<void> {
+    await setConfigValue(IMAGE_BUILD_TOOL_KEY, tool);
+}

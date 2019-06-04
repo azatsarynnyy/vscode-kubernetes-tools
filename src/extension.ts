@@ -81,6 +81,9 @@ import { sleep } from './sleep';
 import { CloudExplorer, CloudExplorerTreeNode } from './components/cloudexplorer/cloudexplorer';
 import { mergeToKubeconfig } from './components/kubectl/kubeconfig';
 import { PortForwardStatusBarManager } from './components/kubectl/port-forward-ui';
+import { getBuildCommand, getPushCommand } from './imageBuild/buildToolsRegistry';
+import { detect as detectImageBuildTool } from './imageBuild/buildToolDetector';
+import { getImageBuildTool } from './components/config/config';
 
 let explainActive = false;
 let swaggerSpecPromise: Promise<explainer.SwaggerModel | undefined> | null = null;
@@ -148,6 +151,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<APIBro
     const portForwardStatusBarManager = PortForwardStatusBarManager.init(portForwardStatusBarItem);
 
     minikube.checkUpgradeAvailable();
+
+    detectImageBuildTool();
 
     const subscriptions = [
 
@@ -876,6 +881,16 @@ function _findNameAndImageInternal(fn: (name: string, image: string) => void) {
     });
 }
 
+// TODO:
+function getDefaultDeploymentName(): string {
+    if (vscode.workspace.rootPath === undefined) {
+        // vscode.window.showErrorMessage('This command requires an opened folder.');
+        throw new Error('This command requires an opened folder.');
+    }
+    const folderName = path.basename(vscode.workspace.rootPath);
+    return docker.sanitiseTag(folderName);
+}
+
 function scaleKubernetes() {
     findKindNameOrPrompt(kuberesources.scaleableKinds, 'scale', {}, (kindName) => {
         promptScaleKubernetes(kindName);
@@ -910,9 +925,9 @@ function diagnosePushError(_exitCode: number, error: string): string {
     if (error.includes("denied")) {
         const user = vscode.workspace.getConfiguration().get("vsdocker.imageUser", null);
         if (user) {
-            return "Failed to push to Docker Hub. Try running docker login.";
+            return "Failed pushing the image to remote registry. Try to login to an image registry.";
         } else {
-            return "Failed to push to Docker Hub. Try setting vsdocker.imageUser.";
+            return "Failed pushing the image to remote registry. Try setting vsdocker.imageUser.";
         }
     }
     return 'Image push failed.';
@@ -921,27 +936,28 @@ function diagnosePushError(_exitCode: number, error: string): string {
 function buildPushThenExec(fn: (name: string, image: string) => void): void {
     findNameAndImage().then((name, image) => {
         vscode.window.withProgress({ location: vscode.ProgressLocation.Window }, async (p) => {
-            p.report({ message: "Docker Building..." });
-            const buildResult = await shell.exec(`docker build -t ${image} .`);
+            const buildTool = getImageBuildTool();
+            p.report({ message: "Building an image..." });
+            const buildResult = await shell.exec(getBuildCommand(image));
             if (buildResult && buildResult.code === 0) {
                 vscode.window.showInformationMessage(image + ' built.');
-                p.report({ message: "Docker Pushing..." });
-                const pushResult = await shell.exec('docker push ' + image);
+                p.report({ message: "Pushing the image..." });
+                const pushResult = await shell.exec(getPushCommand(image));
                 if (pushResult && pushResult.code === 0) {
                     vscode.window.showInformationMessage(image + ' pushed.');
                     fn(name, image);
                 } else if (!pushResult) {
-                    vscode.window.showErrorMessage(`Docker Push failed; unable to call Docker.`);
+                    vscode.window.showErrorMessage(`Image push failed; unable to call ${buildTool}.`);
                 } else {
                     const diagnostic = diagnosePushError(pushResult.code, pushResult.stderr);
-                    vscode.window.showErrorMessage(`${diagnostic} See Output window for docker push error message.`);
-                    kubeChannel.showOutput(pushResult.stderr, 'Docker');
+                    vscode.window.showErrorMessage(`${diagnostic} See Output window for ${buildTool} push error message.`);
+                    kubeChannel.showOutput(pushResult.stderr, buildTool);
                 }
             } else if (!buildResult) {
-                vscode.window.showErrorMessage(`Docker Build failed; unable to call Docker.`);
+                vscode.window.showErrorMessage(`Image build failed; unable to call ${buildTool}.`);
             } else {
                 vscode.window.showErrorMessage('Image build failed. See Output window for details.');
-                kubeChannel.showOutput(buildResult.stderr, 'Docker');
+                kubeChannel.showOutput(buildResult.stderr, buildTool);
                 console.log(buildResult.stderr);
             }
         });
